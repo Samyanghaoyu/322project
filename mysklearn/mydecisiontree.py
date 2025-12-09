@@ -4,6 +4,7 @@
 
 import math
 from collections import Counter
+import random
 
 
 class DecisionNode:
@@ -24,8 +25,15 @@ class DecisionNode:
 class MyDecisionTreeClassifier:
     """Simple decision tree classifier supporting numeric features."""
 
-    def __init__(self):
+    def __init__(self, max_features=None, random_state=None):
+        """
+        max_features: int or None
+            If set, each split randomly samples this many candidate attributes
+            (used by random forest). If None, use all attributes.
+        """
         self.tree = None
+        self.max_features = max_features
+        self.rng = random.Random(random_state)
 
     # ============================================================
     # Main public API
@@ -84,14 +92,21 @@ class MyDecisionTreeClassifier:
 
         return best_gain, best_threshold
 
-    def choose_best_attribute(self, X, y):
-        """Return (best_attribute_index, best_threshold)."""
-        n_features = len(X[0])
+    def choose_best_attribute(self, X, y, feature_indices=None):
+        """Return (best_attribute_index, best_threshold) from candidate features."""
+        if feature_indices is None:
+            feature_indices = list(range(len(X[0])))
+
+        # Randomly sample subset of features if requested
+        if self.max_features is not None:
+            k = min(self.max_features, len(feature_indices))
+            feature_indices = self.rng.sample(feature_indices, k)
+
         best_attr = None
         best_threshold = None
         best_gain = 0
 
-        for col in range(n_features):
+        for col in feature_indices:
             X_column = [row[col] for row in X]
             gain, thr = self.best_numeric_split(X_column, y)
 
@@ -102,7 +117,10 @@ class MyDecisionTreeClassifier:
 
         return best_attr, best_threshold
 
-    def build_tree(self, X, y):
+    def build_tree(self, X, y, feature_indices=None):
+        if feature_indices is None:
+            feature_indices = list(range(len(X[0])))
+
         # If all labels are the same → leaf
         if len(set(y)) == 1:
             return DecisionNode(label=y[0])
@@ -112,7 +130,7 @@ class MyDecisionTreeClassifier:
             return DecisionNode(label=Counter(y).most_common(1)[0][0])
 
         # Choose best attribute
-        attr, threshold = self.choose_best_attribute(X, y)
+        attr, threshold = self.choose_best_attribute(X, y, feature_indices)
 
         # If no useful split → leaf
         if attr is None or threshold is None:
@@ -134,9 +152,9 @@ class MyDecisionTreeClassifier:
         if len(left_y) == 0 or len(right_y) == 0:
             return DecisionNode(label=Counter(y).most_common(1)[0][0])
 
-        # Build subtrees
-        left_child = self.build_tree(left_X, left_y)
-        right_child = self.build_tree(right_X, right_y)
+        # Build subtrees (reuse full candidate list because numeric features can be reused)
+        left_child = self.build_tree(left_X, left_y, feature_indices)
+        right_child = self.build_tree(right_X, right_y, feature_indices)
 
         return DecisionNode(
             attribute=attr,
